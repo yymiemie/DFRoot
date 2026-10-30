@@ -22,7 +22,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison flex libssl-dev libelf-dev xz-utils clang lld llvm
+          sudo apt-get install -y bc bison flex libssl-dev libelf-dev xz-utils clang lld llvm binutils-aarch64-linux-gnu
 
       - name: Fetch Linux 5.4.281
         run: |
