@@ -22,25 +22,13 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison flex libssl-dev libelf-dev xz-utils
+          sudo apt-get install -y bc bison flex libssl-dev libelf-dev xz-utils clang lld llvm
 
       - name: Fetch Linux 5.4.281
         run: |
           curl -fsSL -o linux.tar.xz https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.4.281.tar.xz
           tar -xf linux.tar.xz
           mv linux-5.4.281 kernel
-
-      - name: Fetch clang-r383902b (same toolchain as the device kernel)
-        run: |
-          for ref in main master; do
-            if curl -fsSL -o clang.tar.gz \
-              "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/${ref}/clang-r383902b.tar.gz"; then
-              break
-            fi
-          done
-          mkdir -p clang
-          tar -xzf clang.tar.gz -C clang
-          ./clang/bin/clang --version
 
       - name: Configure kernel with the device config
         run: |
@@ -52,16 +40,12 @@ jobs:
             --set-str SYSTEM_REVOCATION_KEYS "" \
             --set-str MODULE_SIG_KEY ""
           make -C kernel ARCH=arm64 \
-            CC="$PWD/clang/bin/clang" LD="$PWD/clang/bin/ld.lld" \
-            AR="$PWD/clang/bin/llvm-ar" NM="$PWD/clang/bin/llvm-nm" \
-            OBJCOPY="$PWD/clang/bin/llvm-objcopy" OBJDUMP="$PWD/clang/bin/llvm-objdump" \
-            STRIP="$PWD/clang/bin/llvm-strip" \
+            CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm \
+            OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
             olddefconfig
           make -C kernel ARCH=arm64 \
-            CC="$PWD/clang/bin/clang" LD="$PWD/clang/bin/ld.lld" \
-            AR="$PWD/clang/bin/llvm-ar" NM="$PWD/clang/bin/llvm-nm" \
-            OBJCOPY="$PWD/clang/bin/llvm-objcopy" OBJDUMP="$PWD/clang/bin/llvm-objdump" \
-            STRIP="$PWD/clang/bin/llvm-strip" \
+            CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm \
+            OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
             modules_prepare
 
       - name: Install device symbol CRCs
@@ -70,10 +54,8 @@ jobs:
       - name: Build dfroot.ko
         run: |
           make -C lkm KDIR="$PWD/kernel" LLVM=0 KBUILD_MODPOST_WARN=1 \
-            CC="$PWD/clang/bin/clang" LD="$PWD/clang/bin/ld.lld" \
-            AR="$PWD/clang/bin/llvm-ar" NM="$PWD/clang/bin/llvm-nm" \
-            OBJCOPY="$PWD/clang/bin/llvm-objcopy" OBJDUMP="$PWD/clang/bin/llvm-objdump" \
-            STRIP="$PWD/clang/bin/llvm-strip"
+            CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm \
+            OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip
           strings lkm/dfroot.ko | grep -m1 'vermagic=' || true
 
       - name: Upload dfroot.ko
