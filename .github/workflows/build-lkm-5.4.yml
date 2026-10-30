@@ -1,0 +1,83 @@
+name: Build 5.4 LKM (vivo PD2141)
+
+# Builds dfroot.ko for the vivo PD2141 (V2141A) running
+#   5.4.281-qgki-g4273d6fd2de9
+# without the vendor kernel source: the public linux-5.4.281 tree is configured
+# with the device's /proc/config.gz, and the device's own exported-symbol CRCs
+# (lkm/symvers/v2141a-5.4.symvers, extracted from the boot image) are used as
+# Module.symvers so CONFIG_MODVERSIONS checks pass on the device.
+#
+# Run it from the fork's Actions tab, then upload the artifact to
+# app/src/main/jni/ko/dfroot-android11-5.4.ko and run the normal Build workflow.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-lkm-5-4:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison flex libssl-dev libelf-dev xz-utils
+
+      - name: Fetch Linux 5.4.281
+        run: |
+          curl -fsSL -o linux.tar.xz https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.4.281.tar.xz
+          tar -xf linux.tar.xz
+          mv linux-5.4.281 kernel
+
+      - name: Fetch clang-r383902b (same toolchain as the device kernel)
+        run: |
+          for ref in main master; do
+            if curl -fsSL -o clang.tar.gz \
+              "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/${ref}/clang-r383902b.tar.gz"; then
+              break
+            fi
+          done
+          mkdir -p clang
+          tar -xzf clang.tar.gz -C clang
+          ./clang/bin/clang --version
+
+      - name: Configure kernel with the device config
+        run: |
+          cp lkm/configs/v2141a-5.4.config kernel/.config
+          ./kernel/scripts/config --file kernel/.config \
+            --set-str LOCALVERSION "-qgki-g4273d6fd2de9" \
+            --disable LOCALVERSION_AUTO \
+            --set-str SYSTEM_TRUSTED_KEYS "" \
+            --set-str SYSTEM_REVOCATION_KEYS "" \
+            --set-str MODULE_SIG_KEY ""
+          make -C kernel ARCH=arm64 \
+            CC="$PWD/clang/bin/clang" LD="$PWD/clang/bin/ld.lld" \
+            AR="$PWD/clang/bin/llvm-ar" NM="$PWD/clang/bin/llvm-nm" \
+            OBJCOPY="$PWD/clang/bin/llvm-objcopy" OBJDUMP="$PWD/clang/bin/llvm-objdump" \
+            STRIP="$PWD/clang/bin/llvm-strip" \
+            olddefconfig
+          make -C kernel ARCH=arm64 \
+            CC="$PWD/clang/bin/clang" LD="$PWD/clang/bin/ld.lld" \
+            AR="$PWD/clang/bin/llvm-ar" NM="$PWD/clang/bin/llvm-nm" \
+            OBJCOPY="$PWD/clang/bin/llvm-objcopy" OBJDUMP="$PWD/clang/bin/llvm-objdump" \
+            STRIP="$PWD/clang/bin/llvm-strip" \
+            modules_prepare
+
+      - name: Install device symbol CRCs
+        run: cp lkm/symvers/v2141a-5.4.symvers kernel/Module.symvers
+
+      - name: Build dfroot.ko
+        run: |
+          make -C lkm KDIR="$PWD/kernel" LLVM=0 KBUILD_MODPOST_WARN=1 \
+            CC="$PWD/clang/bin/clang" LD="$PWD/clang/bin/ld.lld" \
+            AR="$PWD/clang/bin/llvm-ar" NM="$PWD/clang/bin/llvm-nm" \
+            OBJCOPY="$PWD/clang/bin/llvm-objcopy" OBJDUMP="$PWD/clang/bin/llvm-objdump" \
+            STRIP="$PWD/clang/bin/llvm-strip"
+          strings lkm/dfroot.ko | grep -m1 'vermagic=' || true
+
+      - name: Upload dfroot.ko
+        uses: actions/upload-artifact@v4
+        with:
+          name: dfroot-android11-5.4
+          path: lkm/dfroot.ko
