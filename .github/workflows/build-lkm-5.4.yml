@@ -40,10 +40,12 @@ jobs:
           sed -i 's|^CONFIG_SYSTEM_REVOCATION_KEYS=.*|CONFIG_SYSTEM_REVOCATION_KEYS=""|' kernel/.config
           sed -i 's|^CONFIG_MODULE_SIG_KEY=.*|CONFIG_MODULE_SIG_KEY=""|' kernel/.config
           make -C kernel ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm \
             OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
             olddefconfig
           make -C kernel ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm \
             OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
             modules_prepare
@@ -54,6 +56,7 @@ jobs:
       - name: Build dfroot.ko
         run: |
           make -C lkm KDIR="$PWD/kernel" LLVM=0 KBUILD_MODPOST_WARN=1 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm \
             OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip
           strings lkm/dfroot.ko | grep -m1 'vermagic=' || true
