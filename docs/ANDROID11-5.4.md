@@ -34,9 +34,61 @@
 | `app/src/main/jni/exp.c` | 新增 `DFROOT_KO_5_4` 条件编译：`ko/dfroot-android11-5.4.ko` 的 `.incbin`、`dfroot_ko_11_5_4_start/end` 声明、`select_ko_image()` 里的 `{11, 5, 4, ...}` 表项 |
 | `app/src/main/jni/CMakeLists.txt` | 检测 `ko/dfroot-android11-5.4.ko` 是否存在；存在时加入 `KO_FILES` 并给 `dfroot` 定义 `DFROOT_KO_5_4=1` |
 | `Makefile` | 新增 `KMI_5_4`/`KO_5_4` 与 `ko-5.4` 目标（`KDIR` 指向内核树） |
-| `lkm/build-5.4.sh` | 独立的 5.4 KO 构建脚本（检查 `.config`/`Module.symvers`/`UTS_RELEASE`，构建后校验 vermagic） |
+| `lkm/Makefile` | `DFROOT_KO_5_4=1` 时改用 `--strip-debug`（`--strip-unneeded` 会剥掉没人引用的 `__cfi_check` 符号），并打印符号表 |
+| `lkm/build-5.4.sh` | 独立的 5.4 KO 构建脚本（检查 `.config`/`Module.symvers`/`UTS_RELEASE`，构建后校验 vermagic），同样用 `--strip-debug` |
+| `.github/workflows/build-lkm-5.4.yml` | 配置步骤显式关闭 `CFI_CLANG`/`CFI_CLANG_SHADOW`/`LTO`；构建步骤传 `DFROOT_KO_5_4=1`，并校验 vermagic 与 `__cfi_check` 是否存在 |
 
-`lkm/dfroot.c` 本身不需要改：它用到的符号在 5.4 上都在，`__nocfi`、`struct subprocess_info`、`UMH_WAIT_EXEC` 等均可用。
+`lkm/dfroot.c` 需要两处 5.4 专属改动，原因见下节。
+
+## 3.1 5.4 内核的强制 CFI（必须处理）
+
+设备内核是 ACK `android11-5.4` 血统，**开启且强制** CFI：
+
+```
+CONFIG_CFI_CLANG=y
+CONFIG_CFI_CLANG_SHADOW=y
+# CONFIG_CFI_PERMISSIVE is not set      ← 不是宽容模式，失败即 panic
+CONFIG_LTO_CLANG=y / CONFIG_THINLTO=y
+```
+
+内核侧的加载路径（`kernel/module.c` + `kernel/cfi.c`，与 ACK android11-5.4 一致，
+符号与反汇编均已核对）：
+
+```c
+/* kernel/module.c: cfi_init() —— 加载时执行 */
+mod->cfi_check = (cfi_check_fn)find_kallsyms_symbol_value(mod, "__cfi_check");
+cfi_module_add(mod, module_addr_min, module_addr_max);
+
+/* kernel/cfi.c: cfi_slowpath_handler() —— 每次 CFI 检查失败后执行 */
+check = find_module_cfi_check(ptr);      /* 命中模块 -> mod->cfi_check */
+if (likely(check))
+    check(id, ptr, diag);
+else
+    handle_cfi_failure(ptr);             /* panic("CFI failure (target: %pS)") */
+```
+
+而 `do_one_initcall()`（真正调用 `mod->init` 的地方）在调用前会做 CFI 检查：
+目标地址不在内核 `.cfi_jt` 跳转表范围内就跳 `__cfi_slowpath`。模块的函数必然
+落在模块地址空间，所以**每次进入模块的 CFI 检查都会走 slowpath**。
+
+结论：**模块必须导出名为 `__cfi_check` 的符号**，否则 `mod->cfi_check` 为 NULL，
+加载时（第一次调用 `mod->init`）就 panic：
+
+```
+CFI failure (target: %pS)
+```
+
+本模块**不用** `-fsanitize=cfi` 编译（原因：公开 5.4.281 树只能用现代 clang 构建，
+而现代 clang 已移除老式 CFI sanitizer；且必须与设备那套 clang-11 的类型 ID 哈希
+完全一致才有意义）。因此 `lkm/dfroot.c` 在 `DFROOT_KO_5_4` 下做两件事：
+
+1. `#ifndef __nocfi` / `#define __nocfi`：mainline 5.4 没有 `include/linux/cfi.h`，
+   `__nocfi` 未定义（5.10+ 才定义为 `__attribute__((no_sanitize("kcfi")))`）；
+2. 提供一个**空实现**的 `void __cfi_check(uint64_t, void *, void *)`，占住内核按名字
+   查找的符号位，让 slowpath 放过这个未插桩的模块而不是 panic。
+
+> 注意：因为该符号无人引用，`objcopy --strip-unneeded` 会把它剥掉，所以 5.4 的
+> 构建路径改用 `--strip-debug`（保留符号表）。
 
 ## 4. 构建 KO
 
@@ -88,6 +140,7 @@ CONFIG_LOCALVERSION_AUTO=n
 |---|---|---|
 | `disagrees about version of symbol X` | 模块 CRC 与设备内核不一致 | 用设备同源内核树的 `Module.symvers` 重新构建 |
 | `version magic '...' should be '...'` | vermagic/`UTS_RELEASE` 不一致 | 对齐 `CONFIG_LOCALVERSION`/commit/编译器 |
+| `CFI failure (target: %pS)` → 内核 panic | 模块没有导出 `__cfi_check`，`mod->cfi_check` 为 NULL | 见 3.1：确认用 `DFROOT_KO_5_4=1` 构建、`--strip-debug` 保留符号 |
 | `invalid module format` | 架构/ABI/CFI 不匹配 | 用 clang-r383902b、`LLVM=1`、`ARCH=arm64` |
 | 加载成功但 dmesg 无 `dfroot: selinux_state permissive` | 符号解析失败或布局不一致 | 检查 `kallsyms_lookup_name` 是否可用、`selinux_state` 偏移 |
 | `dfroot: usermodehelper symbols missing` | 符号未导出/名字变化 | 检查 `call_usermodehelper_setup/exec` |
@@ -95,6 +148,10 @@ CONFIG_LOCALVERSION_AUTO=n
 ## 7. 风险与未验证项
 
 - 没有 vivo 官方内核源码时，用 ACK `android11-5.4` + 设备 `.config` 构建的模块，struct 布局与 CRC 可能仍有差异；需要真机 `insmod` 验证。
+- CFI 是被**显式绕过**的：模块未插桩，只提供一个空的 `__cfi_check` 让内核不 panic。
+  这是刻意的取舍（本工具本身就在改内核代码），但若换用 clang ≤16 且能对齐类型 ID
+  哈希，更「正确」的做法是带 `-fsanitize=cfi -flto=thin` 编译，让 clang 生成真正的
+  `__cfi_check` 与 `.cfi_jt`。
 - 该设备有 `CONFIG_STATIC_USERMODEHELPER`（vivo 加固），KO 通过 setup 后改写 `path` 绕过；若厂商后续把覆盖点移到 `call_usermodehelper_exec`，此绕过会失效。
 - 设备可能还有额外的 LSM/DEFEX 类保护；KO 目前只处理 Samsung DEFEX 与 OPPO/OnePlus 的钩子。
 - 本次适配在 Windows 工作区完成，环境没有 ARM64 内核工具链，因此**没有实际编译出 .ko**；需要用上面的 Linux 构建流程产出。

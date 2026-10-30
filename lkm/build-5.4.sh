@@ -45,6 +45,9 @@ make -C "$KDIR" M="$HERE" $MAKE_ARGS modules
 [ -f "$HERE/dfroot.ko" ] || die "build did not produce lkm/dfroot.ko"
 
 # Strip the sections the kernel does not need (same set as lkm/Makefile).
+# --strip-debug keeps the symbol table, which lkm/Makefile's --strip-unneeded
+# path would drop: the 5.4 kernel looks up the "__cfi_check" shim by name and
+# panics if the module does not export it.
 if command -v llvm-objcopy >/dev/null 2>&1; then
     OBJCOPY=llvm-objcopy
 elif command -v aarch64-linux-gnu-objcopy >/dev/null 2>&1; then
@@ -54,7 +57,7 @@ elif command -v objcopy >/dev/null 2>&1; then
 else
     die "no objcopy found (install llvm or binutils)"
 fi
-$OBJCOPY --strip-unneeded \
+$OBJCOPY --strip-debug \
     -R .comment -R .note.gnu.property \
     -R .note.Linux -R .note.GNU-stack \
     -R .BTF -R .BTF.base -R .llvm_addrsig \

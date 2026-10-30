@@ -39,6 +39,24 @@ jobs:
           sed -i 's|^CONFIG_SYSTEM_TRUSTED_KEYS=.*|CONFIG_SYSTEM_TRUSTED_KEYS=""|' kernel/.config
           sed -i 's|^CONFIG_SYSTEM_REVOCATION_KEYS=.*|CONFIG_SYSTEM_REVOCATION_KEYS=""|' kernel/.config
           sed -i 's|^CONFIG_MODULE_SIG_KEY=.*|CONFIG_MODULE_SIG_KEY=""|' kernel/.config
+          # CFI/LTO are deliberately turned OFF for the module build:
+          #   * the public 5.4.281 tree is built with a modern clang that no
+          #     longer supports the legacy -fsanitize=cfi, so CFI_CLANG would
+          #     be dropped by olddefconfig anyway (and include/linux/cfi.h does
+          #     not exist in mainline 5.4, which is why dfroot.c needs its own
+          #     empty __nocfi for this build);
+          #   * the 5.4 kernel requires the module to export "__cfi_check", which
+          #     dfroot.c provides as a no-op shim (see lkm/dfroot.c). Turning
+          #     CFI_CLANG on here would make clang generate its own __cfi_check
+          #     and collide with the shim.
+          # LTO_CLANG is off for the same reason: an LTO-linked module is not
+          # needed for loading and keeps the build tooling simple.
+          sed -i 's|^CONFIG_CFI_CLANG=.*|# CONFIG_CFI_CLANG is not set|' kernel/.config
+          sed -i 's|^CONFIG_CFI_CLANG_SHADOW=.*|# CONFIG_CFI_CLANG_SHADOW is not set|' kernel/.config
+          sed -i 's|^CONFIG_LTO_CLANG=.*|# CONFIG_LTO_CLANG is not set|' kernel/.config
+          sed -i 's|^CONFIG_THINLTO=.*|# CONFIG_THINLTO is not set|' kernel/.config
+          sed -i 's|^CONFIG_LTO=.*|# CONFIG_LTO is not set|' kernel/.config
+          sed -i 's|^# CONFIG_LTO_NONE is not set|CONFIG_LTO_NONE=y|' kernel/.config
           make -C kernel ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm \
@@ -49,17 +67,31 @@ jobs:
             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm \
             OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
             modules_prepare
+          echo "--- effective CFI/LTO settings ---"
+          grep -E 'CONFIG_CFI|CONFIG_LTO' kernel/.config || true
 
       - name: Install device symbol CRCs
         run: cp lkm/symvers/v2141a-5.4.symvers kernel/Module.symvers
 
       - name: Build dfroot.ko
         run: |
-          make -C lkm KDIR="$PWD/kernel" LLVM=0 KBUILD_MODPOST_WARN=1 \
+          make -C lkm KDIR="$PWD/kernel" LLVM=0 KBUILD_MODPOST_WARN=1 DFROOT_KO_5_4=1 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm \
             OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip
-          strings lkm/dfroot.ko | grep -m1 'vermagic=' || true
+          VM=$(strings lkm/dfroot.ko | grep -m1 'vermagic=' | sed 's/^vermagic=//')
+          echo "vermagic: ${VM:-<not found>}"
+          case "$VM" in
+            *5.4.281-qgki-g4273d6fd2de9*modversions*aarch64*) : ;;
+            *) echo "::error::vermagic does not match the device kernel"; exit 1 ;;
+          esac
+          echo "--- __cfi_check shim ---"
+          if llvm-nm lkm/dfroot.ko | grep -q ' __cfi_check$'; then
+            echo "ok: __cfi_check present"
+          else
+            echo "::error::__cfi_check is missing; the 5.4 kernel would panic on load"
+            exit 1
+          fi
 
       - name: Upload dfroot.ko
         uses: actions/upload-artifact@v4

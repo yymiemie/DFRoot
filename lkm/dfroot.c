@@ -7,6 +7,18 @@
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("DFRoot LKM");
 
+#ifdef DFROOT_KO_5_4
+/*
+ * Mainline 5.4 / ACK android11-5.4 has no include/linux/cfi.h, so __nocfi is
+ * not defined there (the 5.4 build is not CFI-instrumented, so an empty
+ * definition is the correct semantics). 5.10+ kernels define it as
+ * __attribute__((no_sanitize("kcfi"))) instead.
+ */
+#ifndef __nocfi
+#define __nocfi
+#endif
+#endif /* DFROOT_KO_5_4 */
+
 typedef unsigned long (*kallsyms_lookup_name_t)(const char *name);
 typedef unsigned long (*module_kallsyms_lookup_name_t)(const char *name);
 typedef void *(*umh_setup_t)(const char *path, char **argv, char **envp, gfp_t gfp,
@@ -190,3 +202,34 @@ static void __exit dfroot_exit(void) {}
 
 module_init(dfroot_init);
 module_exit(dfroot_exit);
+
+#ifdef DFROOT_KO_5_4
+/*
+ * CFI shim for ACK android11-5.4 / 5.4 kernels (the vivo PD2141 vendor kernel
+ * is built with CONFIG_CFI_CLANG=y, CONFIG_CFI_CLANG_SHADOW=y and
+ * CONFIG_CFI_PERMISSIVE unset, i.e. enforcing CFI).
+ *
+ * The kernel requires every loaded module to export a symbol named
+ * "__cfi_check":
+ *   kernel/module.c: cfi_init()
+ *       mod->cfi_check = find_kallsyms_symbol_value(mod, "__cfi_check");
+ *   kernel/cfi.c: cfi_slowpath_handler()
+ *       check = find_module_cfi_check(ptr);          /* -> mod->cfi_check */
+ *       if (!check) handle_cfi_failure(ptr);         /* -> panic("CFI failure") */
+ *
+ * This module is compiled without -fsanitize=cfi (the public 5.4.281 tree is
+ * built with a modern clang that no longer supports the legacy CFI sanitizer,
+ * and matching the device's clang-11 type-id hashes is not practical), so it
+ * has no compiler-generated __cfi_check and the loader would store NULL and
+ * panic on the first CFI-checked indirect call into the module (mod->init()).
+ *
+ * Providing a no-op checker under that exact name makes the kernel's slowpath
+ * accept this uninstrumented module instead of panicking.
+ */
+void __cfi_check(uint64_t id, void *ptr, void *diag)
+{
+	(void)id;
+	(void)ptr;
+	(void)diag;
+}
+#endif /* DFROOT_KO_5_4 */

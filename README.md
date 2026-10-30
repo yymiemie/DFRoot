@@ -98,6 +98,15 @@ make ko-5.4 KDIR=/path/to/android11-5.4
 make
 ```
 
+> [!IMPORTANT]
+> Kernels of this generation (ACK `android11-5.4`) are built with **enforcing**
+> `CONFIG_CFI_CLANG=y` + `CONFIG_CFI_CLANG_SHADOW=y`. The loader stores
+> `mod->cfi_check = find_kallsyms_symbol_value(mod, "__cfi_check")` and
+> `kernel/cfi.c` panics with `CFI failure (target: %pS)` when a module exports
+> no symbol by that name, so the LKM ships a no-op `__cfi_check` shim
+> (`DFROOT_KO_5_4`) and must be built with `--strip-debug` so the symbol
+> survives stripping. See [docs/ANDROID11-5.4.md](docs/ANDROID11-5.4.md).
+
 See [docs/ANDROID11-5.4.md](docs/ANDROID11-5.4.md) for the target kernel details,
 required toolchain and troubleshooting.
 
