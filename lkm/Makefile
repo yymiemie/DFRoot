@@ -44,7 +44,7 @@ all:
 	           -R .hyp.text -R .hyp.bss -R .hyp.rodata -R .hyp.event_ids \
 	           -R .hyp.patchable_function_entries -R .hyp.data \
 	           dfroot.ko
-	@echo "dfroot.ko symbols:"; $(NM) dfroot.ko 2>/dev/null | grep -E ' __cfi_check$' \
+	@echo "dfroot.ko symbols:"; $(NM) dfroot.ko 2>/dev/null | grep -E ' __cfi_check$$' \
 	    || echo "  (no __cfi_check)"
 
 clean:
