@@ -1,12 +1,15 @@
 obj-m += dfroot.o
 
+KDIR ?= /lib/modules/$(shell uname -r)/build
+LLVM ?= 1
+
 CFLAGS_dfroot.o := -Os -Qn -fno-addrsig -fno-asynchronous-unwind-tables \
                    -fno-unwind-tables
 
 all:
 	$(MAKE) -C $(KDIR) M=$(CURDIR) \
 		ARCH=arm64 \
-		LLVM=1 \
+		LLVM=$(LLVM) \
 		modules
 	$(OBJCOPY) --strip-unneeded \
 	           -R .comment -R .note.gnu.property \
