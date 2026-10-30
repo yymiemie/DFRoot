@@ -214,8 +214,8 @@ module_exit(dfroot_exit);
  *   kernel/module.c: cfi_init()
  *       mod->cfi_check = find_kallsyms_symbol_value(mod, "__cfi_check");
  *   kernel/cfi.c: cfi_slowpath_handler()
- *       check = find_module_cfi_check(ptr);          /* -> mod->cfi_check */
- *       if (!check) handle_cfi_failure(ptr);         /* -> panic("CFI failure") */
+ *       check = find_module_cfi_check(ptr);          -> mod->cfi_check
+ *       if (!check) handle_cfi_failure(ptr);         -> panic
  *
  * This module is compiled without -fsanitize=cfi (the public 5.4.281 tree is
  * built with a modern clang that no longer supports the legacy CFI sanitizer,
