@@ -92,7 +92,7 @@ ko-5.4: $(LKM_SRCS)
 	    printf '\033[1;31m  ✘  KDIR is required: make ko-5.4 KDIR=/path/to/android11-5.4\033[0m\n'; \
 	    exit 1; }
 	@printf '\n\033[1;35m══  Building DF LKM  %s  ══\033[0m\n' "$(KMI_5_4)"
-	$(MAKE) -C lkm KDIR=$(KDIR)
+	$(MAKE) -C lkm KDIR=$(KDIR) DFROOT_KO_5_4=1
 	mkdir -p app/src/main/jni/ko
 	cp lkm/dfroot.ko $(KO_5_4)
 	@printf '\033[1;32m  ✔  DF LKM   %s\033[0m\n' "$(KMI_5_4)"

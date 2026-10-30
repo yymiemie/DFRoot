@@ -40,7 +40,7 @@ if ! printf '%s' "$REL" | grep -q '5\.4\.'; then
 fi
 
 info "building module"
-make -C "$KDIR" M="$HERE" $MAKE_ARGS modules
+make -C "$KDIR" M="$HERE" $MAKE_ARGS DFROOT_KO_5_4=1 modules
 
 [ -f "$HERE/dfroot.ko" ] || die "build did not produce lkm/dfroot.ko"
 
