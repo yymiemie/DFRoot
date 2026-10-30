@@ -87,6 +87,20 @@ The exploit uses this primitive to patch shellcode into `libc++.so` in the kerne
 make
 ```
 
+### Android 11 / 5.4 (ACK android11-5.4)
+
+The DDK images used above do not cover `android11-5.4`. Build that LKM against
+a kernel tree matching the device (same `.config`, `Module.symvers` and
+`LOCALVERSION`), then rebuild the APK:
+
+```sh
+make ko-5.4 KDIR=/path/to/android11-5.4
+make
+```
+
+See [docs/ANDROID11-5.4.md](docs/ANDROID11-5.4.md) for the target kernel details,
+required toolchain and troubleshooting.
+
 ## Credits
 
 - Original PoC and various code: https://github.com/lsposed/lspromise

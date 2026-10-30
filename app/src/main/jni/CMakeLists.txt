@@ -33,11 +33,22 @@ set(KO_FILES
     "${JNI_DIR}/ko/dfroot-android17-6.18.ko"
 )
 
+# Android 11 / ACK android11-5.4 (5.4.x) is optional: it has no DDK image, so
+# it is only embedded when `make ko-5.4 KDIR=...` has produced the blob.
+set(KO_5_4 "${JNI_DIR}/ko/dfroot-android11-5.4.ko")
+if(EXISTS "${KO_5_4}")
+    list(APPEND KO_FILES "${KO_5_4}")
+    set(DFROOT_HAVE_KO_5_4 TRUE)
+endif()
+
 # AGP only packages lib*.so, so the executable is named libdfroot.so and lands
 # in the APK's native lib dir. The app execs it from nativeLibraryDir, which is
 # executable (app data dir is not).
 add_executable(dfroot exp.c libcxx.S elf_parser.c)
 add_dependencies(dfroot splicehelper_bin)
+if(DFROOT_HAVE_KO_5_4)
+    target_compile_definitions(dfroot PRIVATE DFROOT_KO_5_4=1)
+endif()
 set_target_properties(dfroot PROPERTIES
     PREFIX "lib"
     SUFFIX ".so"

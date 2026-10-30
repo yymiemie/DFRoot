@@ -262,6 +262,17 @@ asm(
     "dfroot_ko_17_6_18_start:\n.incbin \"ko/dfroot-android17-6.18.ko\"\ndfroot_ko_17_6_18_end:\n"
 );
 
+#ifdef DFROOT_KO_5_4
+/* Android 11 / ACK android11-5.4 (5.4.x) — not covered by the DDK images.
+ * Build it with `make ko-5.4 KDIR=<kernel tree>`; the CMake build only
+ * embeds this blob when ko/dfroot-android11-5.4.ko exists. */
+asm(
+    ".section .rodata\n"
+    ".global dfroot_ko_11_5_4_start\n.global dfroot_ko_11_5_4_end\n"
+    "dfroot_ko_11_5_4_start:\n.incbin \"ko/dfroot-android11-5.4.ko\"\ndfroot_ko_11_5_4_end:\n"
+);
+#endif
+
 asm(
     ".section .rodata\n"
     ".global splice_helper_start\n.global splice_helper_end\n"
@@ -269,6 +280,9 @@ asm(
 );
 
 extern char dfroot_ko_12_5_10_start[], dfroot_ko_12_5_10_end[];
+#ifdef DFROOT_KO_5_4
+extern char dfroot_ko_11_5_4_start[], dfroot_ko_11_5_4_end[];
+#endif
 extern char dfroot_ko_13_5_10_start[], dfroot_ko_13_5_10_end[];
 extern char dfroot_ko_13_5_15_start[], dfroot_ko_13_5_15_end[];
 extern char dfroot_ko_14_5_15_start[], dfroot_ko_14_5_15_end[];
@@ -282,6 +296,9 @@ struct KoImage { int android_release, kver_major, kver_minor; const char *start,
 
 static const struct KoImage *select_ko_image(int andr, int major, int minor) {
     static const struct KoImage imgs[] = {
+#ifdef DFROOT_KO_5_4
+        {11, 5,  4, dfroot_ko_11_5_4_start,  dfroot_ko_11_5_4_end},
+#endif
         {12, 5, 10, dfroot_ko_12_5_10_start, dfroot_ko_12_5_10_end},
         {13, 5, 10, dfroot_ko_13_5_10_start, dfroot_ko_13_5_10_end},
         {13, 5, 15, dfroot_ko_13_5_15_start, dfroot_ko_13_5_15_end},

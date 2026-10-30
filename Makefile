@@ -16,6 +16,11 @@ KMIS :=        \
     android16-6.12  \
     android17-6.18
 
+# Android 11 / ACK android11-5.4 (5.4.x) has no DDK image. Build it against a
+# matching kernel tree instead:  make ko-5.4 KDIR=/path/to/android11-5.4
+KMI_5_4     := android11-5.4
+KO_5_4      := app/src/main/jni/ko/dfroot-$(KMI_5_4).ko
+
 DDK_WF      := .github/workflows/build.yml
 
 DDK_IMAGE   ?= $(shell awk '/image: ghcr\.io\//{gsub(/.*image: /,"");gsub(/:.*$$/,"");print;exit}' $(DDK_WF))
@@ -76,6 +81,25 @@ $(APK): signing.properties $(LKM_KOS) $(APK_SRCS)
 	mkdir -p $(dir $@)
 	cp app/build/outputs/apk/release/DFRoot_*.apk $@
 	@printf '\033[1;32m  ✔  DFRoot APK  →  $@\033[0m\n'
+
+# Android 11 / ACK android11-5.4 (5.4.x) LKM.
+# The DDK images do not cover this KMI, so point KDIR at a kernel tree that
+# matches the device (same .config + Module.symvers + LOCALVERSION):
+#   make ko-5.4 KDIR=/path/to/android11-5.4
+# then rebuild the APK (CMake picks up the blob automatically).
+ko-5.4: $(LKM_SRCS)
+	@test -n "$(KDIR)" || { \
+	    printf '\033[1;31m  ✘  KDIR is required: make ko-5.4 KDIR=/path/to/android11-5.4\033[0m\n'; \
+	    exit 1; }
+	@printf '\n\033[1;35m══  Building DF LKM  %s  ══\033[0m\n' "$(KMI_5_4)"
+	$(MAKE) -C lkm KDIR=$(KDIR)
+	mkdir -p app/src/main/jni/ko
+	cp lkm/dfroot.ko $(KO_5_4)
+	@printf '\033[1;32m  ✔  DF LKM   %s\033[0m\n' "$(KMI_5_4)"
+
+ifneq ($(KDIR),)
+$(APK): ko-5.4
+endif
 
 clean:
 	rm -f app/src/main/jni/splicehelper
