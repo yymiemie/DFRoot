@@ -44,7 +44,7 @@ jobs:
 
       - name: Configure kernel with the device config
         run: |
-          cp lkm/configs/v2141a-5.4.config kernel/.config
+          gunzip -c lkm/configs/v2141a-5.4.config.gz > kernel/.config
           ./kernel/scripts/config --file kernel/.config \
             --set-str LOCALVERSION "-qgki-g4273d6fd2de9" \
             --disable LOCALVERSION_AUTO \
